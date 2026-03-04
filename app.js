@@ -12,7 +12,8 @@ function createDefaultUserData() {
     profile: { sex: 'H', age: 30, weight: 75, height: 175, activity: 1.55, targetWeight: '' },
     goal: { type: 'loss', delta: 500 },
     logs: {},
-    recents: []
+    recents: [],
+    favorites: []
   };
 }
 
@@ -27,8 +28,20 @@ const state = {
   activeProfileId: 'default',
   theme: 'dark',
   calendarDate: new Date(),
-  activeDayDetails: null
+  activeDayDetails: null,
+  activeTab: 'today',
+  favoriteEditMode: false
 };
+
+const FAVORITES_MAX = 10;
+const DEFAULT_FAVORITE_NAMES = ['Œuf entier', 'Thon naturel', 'Jambon blanc', 'Steak haché 5%', 'Yaourt nature'];
+const QUICK_UNITS = [
+  { key: 'portion', label: 'portion(s)', type: 'portion', factor: 1 },
+  { key: 'grams', label: 'g', type: 'grams', factor: 1 },
+  { key: 'ml', label: 'ml', type: 'grams', factor: 1 },
+  { key: 'slice', label: 'tranche(s)', type: 'portion', factor: 0.5 },
+  { key: 'piece', label: 'pièce(s)', type: 'portion', factor: 1 }
+];
 
 const activeProfile = () => state.profiles[state.activeProfileId];
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -90,6 +103,15 @@ function load() {
   save();
 }
 
+function enrichProfile(profile) {
+  if (!Array.isArray(profile.favorites)) profile.favorites = [];
+  if (profile.favorites.length) return;
+  profile.favorites = DEFAULT_FAVORITE_NAMES
+    .map((name) => FOOD_DATABASE.find((food) => normalizeText(food.name) === normalizeText(name)))
+    .filter(Boolean)
+    .map((food) => ({ name: food.name, kcal: food.kcalPerPortion, portionDefault: food.defaultPortionG, unit: 'portion(s)' }));
+}
+
 function ensureDay(date) {
   const user = activeProfile();
   if (!user.logs[date]) user.logs[date] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
@@ -106,8 +128,13 @@ function totalsForDay(date) {
   }, { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
+function getUnitConfig(unitKey) {
+  return QUICK_UNITS.find((unit) => unit.key === unitKey) || QUICK_UNITS[0];
+}
+
 function calcEntry(food, quantity, quantityType) {
-  const grams = quantityType === 'grams' ? quantity : quantity * food.defaultPortionG;
+  const unit = getUnitConfig(quantityType);
+  const grams = unit.type === 'grams' ? quantity * unit.factor : quantity * food.defaultPortionG * unit.factor;
   const ratio = grams / food.defaultPortionG;
   return {
     foodName: food.name,
@@ -185,7 +212,12 @@ function renderSearchResults() {
     btn.className = 'btn-outline';
     btn.textContent = 'Ajouter';
     btn.addEventListener('click', () => addFood(food, quantity, quantityType));
+    const favBtn = document.createElement('button');
+    favBtn.className = 'btn-outline';
+    favBtn.textContent = '☆ Favori';
+    favBtn.addEventListener('click', () => addFavorite(food));
     li.appendChild(btn);
+    li.appendChild(favBtn);
     ul.appendChild(li);
   });
 }
@@ -201,20 +233,54 @@ function addFood(food, quantity, quantityType, date = document.getElementById('e
 function renderFavorites() {
   const user = activeProfile();
   const box = document.getElementById('favoriteFoods');
-  if (!user.recents.length) {
-    box.innerHTML = '<small class="muted">Favoris récents</small>';
+  if (!Array.isArray(user.favorites)) user.favorites = [];
+  if (!user.favorites.length) {
+    box.innerHTML = '<small class="muted">Ajoute tes aliments favoris pour aller plus vite !</small>';
     return;
   }
+
   box.innerHTML = '';
-  user.recents.forEach((name) => {
-    const food = FOOD_DATABASE.find((f) => f.name === name);
+  user.favorites.forEach((favorite) => {
+    const food = FOOD_DATABASE.find((f) => f.name === favorite.name);
     if (!food) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'favorite-item';
     const btn = document.createElement('button');
-    btn.className = 'btn-outline';
-    btn.textContent = name;
+    btn.className = 'btn-outline favorite-btn';
+    btn.textContent = favorite.name;
     btn.addEventListener('click', () => addFood(food, 1, 'portion'));
-    box.appendChild(btn);
+    wrap.appendChild(btn);
+
+    if (state.favoriteEditMode) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'favorite-remove';
+      removeBtn.type = 'button';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => removeFavorite(favorite.name));
+      wrap.appendChild(removeBtn);
+    }
+
+    box.appendChild(wrap);
   });
+}
+
+function addFavorite(food) {
+  const user = activeProfile();
+  if (user.favorites.some((fav) => normalizeText(fav.name) === normalizeText(food.name))) return;
+  if (user.favorites.length >= FAVORITES_MAX) {
+    alert(`Maximum ${FAVORITES_MAX} favoris.`);
+    return;
+  }
+  user.favorites.push({ name: food.name, kcal: food.kcalPerPortion, portionDefault: food.defaultPortionG, unit: 'portion(s)' });
+  save();
+  renderFavorites();
+}
+
+function removeFavorite(name) {
+  const user = activeProfile();
+  user.favorites = user.favorites.filter((fav) => normalizeText(fav.name) !== normalizeText(name));
+  save();
+  renderFavorites();
 }
 
 function renderMeals() {
@@ -499,6 +565,7 @@ function createProfile(name) {
   if (!trimmed) return;
   const id = `p-${Date.now()}`;
   state.profiles[id] = { id, name: trimmed, ...createDefaultUserData() };
+  enrichProfile(state.profiles[id]);
   state.activeProfileId = id;
   save();
   renderProfileSelector();
@@ -518,7 +585,12 @@ function deleteActiveProfile() {
 }
 
 function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === tab));
+  state.activeTab = tab;
+  document.querySelectorAll('.tab').forEach((el) => {
+    const isActive = el.dataset.tab === tab;
+    el.classList.toggle('active', isActive);
+    el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
   document.querySelectorAll('.tab-panel').forEach((el) => el.classList.toggle('active', el.dataset.panel === tab));
 }
 
@@ -543,6 +615,8 @@ function openRouteFromPath() {
 
 function init() {
   load();
+  Object.values(state.profiles).forEach(enrichProfile);
+  save();
   document.getElementById('entryDate').value = todayStr();
   renderProfileSelector();
   bindProfile();
@@ -552,11 +626,21 @@ function init() {
       history.pushState({}, '', '/');
       state.activeDayDetails = null;
       switchTab(tab.dataset.tab);
+      renderAll();
     });
+  });
+
+  document.getElementById('toggleFavoriteEditBtn').addEventListener('click', () => {
+    state.favoriteEditMode = !state.favoriteEditMode;
+    const btn = document.getElementById('toggleFavoriteEditBtn');
+    btn.classList.toggle('active', state.favoriteEditMode);
+    btn.textContent = state.favoriteEditMode ? '✓ Fermer' : '✏️ Gérer favoris';
+    renderFavorites();
   });
 
   document.getElementById('profileSelect').addEventListener('change', (e) => {
     state.activeProfileId = e.target.value;
+    enrichProfile(activeProfile());
     save();
     bindProfile();
     renderAll();
@@ -616,6 +700,7 @@ function init() {
 
   renderAll();
   openRouteFromPath();
+  switchTab(state.activeTab);
 }
 
 init();
