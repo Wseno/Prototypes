@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'calorie-tracker-v1';
+const STORAGE_KEY = 'calorie-tracker-v2';
+const LEGACY_STORAGE_KEY = 'calorie-tracker-v1';
 const MEALS = [
   { key: 'breakfast', label: 'Petit-déj' },
   { key: 'lunch', label: 'Déjeuner' },
@@ -6,14 +7,27 @@ const MEALS = [
   { key: 'snacks', label: 'Collations' }
 ];
 
+function createDefaultUserData() {
+  return {
+    profile: { sex: 'H', age: 30, weight: 75, height: 175, activity: 1.55, targetWeight: '' },
+    goal: { type: 'loss', delta: 500 },
+    logs: {},
+    recents: []
+  };
+}
+
 const state = {
-  profile: { sex: 'H', age: 30, weight: 75, height: 175, activity: 1.55, targetWeight: '' },
-  goal: { type: 'loss', delta: 500 },
-  logs: {},
-  recents: [],
+  profiles: {
+    default: { id: 'default', name: 'Profil principal', ...createDefaultUserData() }
+  },
+  activeProfileId: 'default',
   theme: 'light',
   calendarDate: new Date()
 };
+
+function activeProfile() {
+  return state.profiles[state.activeProfileId];
+}
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -27,9 +41,10 @@ function getTDEE(profile) {
 }
 
 function targetIntake() {
-  const tdee = getTDEE(state.profile);
-  if (state.goal.type === 'loss') return tdee - state.goal.delta;
-  if (state.goal.type === 'gain') return tdee + Math.min(state.goal.delta, 500);
+  const user = activeProfile();
+  const tdee = getTDEE(user.profile);
+  if (user.goal.type === 'loss') return tdee - user.goal.delta;
+  if (user.goal.type === 'gain') return tdee + Math.min(user.goal.delta, 500);
   return tdee;
 }
 
@@ -37,19 +52,46 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function migrateLegacyData(parsed) {
+  return {
+    profiles: {
+      default: {
+        id: 'default',
+        name: 'Profil principal',
+        profile: parsed.profile || createDefaultUserData().profile,
+        goal: parsed.goal || createDefaultUserData().goal,
+        logs: parsed.logs || {},
+        recents: parsed.recents || []
+      }
+    },
+    activeProfileId: 'default',
+    theme: parsed.theme || 'light'
+  };
+}
+
 function load() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return;
-  const parsed = JSON.parse(raw);
-  Object.assign(state, parsed);
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    Object.assign(state, parsed);
+    state.calendarDate = new Date();
+    return;
+  }
+
+  const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacyRaw) return;
+  const legacyParsed = JSON.parse(legacyRaw);
+  Object.assign(state, migrateLegacyData(legacyParsed));
   state.calendarDate = new Date();
+  save();
 }
 
 function ensureDay(date) {
-  if (!state.logs[date]) {
-    state.logs[date] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
+  const user = activeProfile();
+  if (!user.logs[date]) {
+    user.logs[date] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
   }
-  return state.logs[date];
+  return user.logs[date];
 }
 
 function calcEntry(food, quantity, quantityType) {
@@ -82,25 +124,26 @@ function format(num) {
 }
 
 function renderProjection() {
-  const tdee = getTDEE(state.profile);
-  const delta = state.goal.type === 'maintain' ? 0 : state.goal.delta;
+  const user = activeProfile();
+  const tdee = getTDEE(user.profile);
+  const delta = user.goal.type === 'maintain' ? 0 : user.goal.delta;
   const projection = document.getElementById('projectionText');
-  const targetWeight = Number(state.profile.targetWeight);
+  const targetWeight = Number(user.profile.targetWeight);
   let text = `TDEE estimé: ${format(tdee)} kcal/jour. Cible d'apport: ${format(targetIntake())} kcal/jour.`;
 
-  if (state.goal.type === 'loss' && delta > 0) {
+  if (user.goal.type === 'loss' && delta > 0) {
     const kgPerDay = delta / 7700;
     const daysPerKg = 1 / kgPerDay;
     text += ` Avec un déficit moyen de ${delta} kcal/jour, tu perds environ 1 kg tous les ~${daysPerKg.toFixed(1)} jours.`;
-    if (targetWeight && targetWeight < state.profile.weight) {
-      const kgToLose = state.profile.weight - targetWeight;
+    if (targetWeight && targetWeight < user.profile.weight) {
+      const kgToLose = user.profile.weight - targetWeight;
       const days = kgToLose * 7700 / delta;
       const months = days / 30;
       text += ` Pour perdre ${kgToLose.toFixed(1)} kg → estimation: ${months.toFixed(1)} mois (≈ ${days.toFixed(0)} jours).`;
     }
   }
 
-  if (state.goal.type === 'gain') {
+  if (user.goal.type === 'gain') {
     text += ` En prise de masse, un surplus modéré (${Math.min(delta, 500)} kcal/jour) est appliqué pour rester progressif.`;
   }
 
@@ -132,24 +175,26 @@ function renderSearchResults() {
 }
 
 function addFood(food, quantity, quantityType) {
+  const user = activeProfile();
   const date = document.getElementById('entryDate').value;
   const meal = document.getElementById('mealType').value;
   const entry = calcEntry(food, quantity, quantityType);
   ensureDay(date)[meal].push(entry);
 
-  state.recents = [food.name, ...state.recents.filter((n) => n !== food.name)].slice(0, 10);
+  user.recents = [food.name, ...user.recents.filter((n) => n !== food.name)].slice(0, 10);
   save();
   renderAll();
 }
 
 function renderFavorites() {
+  const user = activeProfile();
   const box = document.getElementById('favoriteFoods');
-  if (!state.recents.length) {
+  if (!user.recents.length) {
     box.innerHTML = '<small>Favoris rapides: les 10 derniers aliments apparaissent ici.</small>';
     return;
   }
   box.innerHTML = '<strong>Ajout rapide</strong>';
-  state.recents.forEach((name) => {
+  user.recents.forEach((name) => {
     const food = FOOD_DATABASE.find((f) => f.name === name);
     if (!food) return;
     const btn = document.createElement('button');
@@ -191,9 +236,10 @@ function renderMeals() {
 }
 
 function renderSummary() {
+  const user = activeProfile();
   const date = document.getElementById('entryDate').value;
   const totals = totalsForDay(date);
-  const tdee = getTDEE(state.profile);
+  const tdee = getTDEE(user.profile);
   const intakeTarget = targetIntake();
   const diff = totals.kcal - tdee;
   const targetDiff = totals.kcal - intakeTarget;
@@ -218,7 +264,7 @@ function renderSummary() {
     <div class="bar fat" style="width:${f}%">L ${f.toFixed(0)}%</div>
   `;
 
-  const min = state.profile.sex === 'F' ? 1200 : 1500;
+  const min = user.profile.sex === 'F' ? 1200 : 1500;
   document.getElementById('intakeAlert').textContent = totals.kcal < min
     ? `⚠️ Apport bas: ${format(totals.kcal)} kcal (< ${min} kcal recommandé minimum).`
     : '';
@@ -292,31 +338,110 @@ function exportCsv() {
   a.click();
 }
 
+function exportBackup() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data: state
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `calorie-backup-${todayStr()}.json`;
+  a.click();
+}
+
+function importBackup(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!parsed.data?.profiles) {
+        alert('Fichier invalide: profils manquants.');
+        return;
+      }
+      Object.assign(state, parsed.data);
+      state.calendarDate = new Date();
+      if (!state.profiles[state.activeProfileId]) {
+        state.activeProfileId = Object.keys(state.profiles)[0];
+      }
+      save();
+      renderProfileSelector();
+      bindProfile();
+      renderAll();
+      alert('Sauvegarde importée avec succès.');
+    } catch {
+      alert('Impossible de lire le fichier JSON.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function renderProfileSelector() {
+  const select = document.getElementById('profileSelect');
+  select.innerHTML = '';
+  Object.values(state.profiles).forEach((profile) => {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = profile.name;
+    select.appendChild(option);
+  });
+  select.value = state.activeProfileId;
+}
+
 function bindProfile() {
+  const user = activeProfile();
   ['sex', 'age', 'weight', 'height', 'activity', 'targetWeight'].forEach((id) => {
     const el = document.getElementById(id);
-    el.value = state.profile[id];
-    el.addEventListener('change', () => {
-      state.profile[id] = ['age', 'weight', 'height', 'activity', 'targetWeight'].includes(id)
+    el.value = user.profile[id];
+    el.onchange = () => {
+      user.profile[id] = ['age', 'weight', 'height', 'activity', 'targetWeight'].includes(id)
         ? Number(el.value)
         : el.value;
       save();
       renderAll();
-    });
+    };
   });
 
-  document.getElementById('goalType').value = state.goal.type;
-  document.getElementById('goalDelta').value = state.goal.delta;
-  document.getElementById('goalType').addEventListener('change', (e) => {
-    state.goal.type = e.target.value;
+  document.getElementById('goalType').value = user.goal.type;
+  document.getElementById('goalDelta').value = user.goal.delta;
+  document.getElementById('goalType').onchange = (e) => {
+    user.goal.type = e.target.value;
     save();
     renderAll();
-  });
-  document.getElementById('goalDelta').addEventListener('change', (e) => {
-    state.goal.delta = Number(e.target.value);
+  };
+  document.getElementById('goalDelta').onchange = (e) => {
+    user.goal.delta = Number(e.target.value);
     save();
     renderAll();
-  });
+  };
+}
+
+function createProfile(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const id = `p-${Date.now()}`;
+  state.profiles[id] = { id, name: trimmed, ...createDefaultUserData() };
+  state.activeProfileId = id;
+  save();
+  renderProfileSelector();
+  bindProfile();
+  renderAll();
+}
+
+function deleteActiveProfile() {
+  const ids = Object.keys(state.profiles);
+  if (ids.length <= 1) {
+    alert('Au moins un profil est obligatoire.');
+    return;
+  }
+  delete state.profiles[state.activeProfileId];
+  state.activeProfileId = Object.keys(state.profiles)[0];
+  save();
+  renderProfileSelector();
+  bindProfile();
+  renderAll();
 }
 
 function renderAll() {
@@ -331,7 +456,21 @@ function renderAll() {
 function init() {
   load();
   document.getElementById('entryDate').value = todayStr();
+  renderProfileSelector();
   bindProfile();
+
+  document.getElementById('profileSelect').addEventListener('change', (e) => {
+    state.activeProfileId = e.target.value;
+    save();
+    bindProfile();
+    renderAll();
+  });
+  document.getElementById('createProfileBtn').addEventListener('click', () => {
+    const input = document.getElementById('newProfileName');
+    createProfile(input.value);
+    input.value = '';
+  });
+  document.getElementById('deleteProfileBtn').addEventListener('click', deleteActiveProfile);
 
   document.getElementById('foodSearch').addEventListener('input', renderSearchResults);
   document.getElementById('quantity').addEventListener('input', renderSearchResults);
@@ -351,6 +490,8 @@ function init() {
   });
   document.getElementById('entryDate').addEventListener('change', renderAll);
   document.getElementById('exportBtn').addEventListener('click', exportCsv);
+  document.getElementById('backupExportBtn').addEventListener('click', exportBackup);
+  document.getElementById('backupImportInput').addEventListener('change', (e) => importBackup(e.target.files[0]));
 
   const toggle = document.getElementById('themeToggle');
   toggle.checked = state.theme === 'dark';

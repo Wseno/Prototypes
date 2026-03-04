@@ -21,6 +21,14 @@
     <main>
       <section class="card profile">
         <h2>Profil utilisateur (1 fois)</h2>
+        <div class="profile-actions">
+          <label>Profil actif
+            <select id="profileSelect"></select>
+          </label>
+          <input id="newProfileName" type="text" placeholder="Nouveau profil" maxlength="40" />
+          <button id="createProfileBtn" type="button">Créer profil</button>
+          <button id="deleteProfileBtn" type="button">Supprimer profil</button>
+        </div>
         <div class="grid">
           <label>Sexe
             <select id="sex">
@@ -130,7 +138,7 @@
       </section>
 
       <section class="card export">
-        <h2>Export CSV</h2>
+        <h2>Export / sauvegarde</h2>
         <label>Période
           <select id="exportDays">
             <option value="30">30 jours</option>
@@ -139,6 +147,12 @@
           </select>
         </label>
         <button id="exportBtn">Exporter</button>
+        <hr />
+        <p class="hint">Sauvegarde complète pour changer d'appareil (profils + historique).</p>
+        <button id="backupExportBtn" type="button">Exporter sauvegarde (JSON)</button>
+        <label class="import-label">Importer sauvegarde (JSON)
+          <input id="backupImportInput" type="file" accept="application/json" />
+        </label>
       </section>
     </main>
 

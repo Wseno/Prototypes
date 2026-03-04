@@ -104,3 +104,19 @@ button { cursor: pointer; background: var(--accent); color: white; border: none;
 .day.empty { visibility: hidden; }
 .hint { color: var(--muted); font-size: 0.86rem; }
 .projection { font-weight: 600; }
+
+.profile-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 0.8rem;
+}
+
+.import-label {
+  margin-top: 0.7rem;
+}
+
+.import-label input {
+  margin-top: 0.3rem;
+  padding: 0.3rem;
+}

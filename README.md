@@ -8,17 +8,18 @@ Application web front-end (stockage local uniquement) pour:
 - Projeter le temps estimé vers un poids cible (base 7700 kcal ≈ 1 kg).
 - Consulter un calendrier coloré selon l'écart à l'objectif.
 - Utiliser une base préremplie de 300 aliments courants.
+- Gérer plusieurs profils (une personne par profil).
 - Exporter les 30/60/90 derniers jours en CSV.
+- Exporter / importer une sauvegarde JSON complète (profils + historique).
 
 ## Lancer localement
 
-```bash
-python -m http.server 8000
-```
+Aucun serveur n'est nécessaire.
 
-Puis ouvrir `http://localhost:8000`.
+Ouvrez simplement `index.html` dans votre navigateur (double-clic).
 
 ## Données
 
-- Données persistées dans `localStorage` (`calorie-tracker-v1`).
+- Données persistées dans `localStorage`.
+- Sauvegarde portable via export JSON (pratique pour changer d'ordinateur ou mobile).
 - Aucune authentification, aucun envoi réseau.
