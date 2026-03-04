@@ -373,9 +373,14 @@ function dayColor(date) {
   return 'red';
 }
 
+function updatePath(path) {
+  if (window.location.protocol === 'file:') return;
+  history.pushState({}, '', path);
+}
+
 function openDayDetails(date, fromCalendar = false) {
   state.activeDayDetails = date;
-  history.pushState({}, '', `/day/${date}`);
+  updatePath(`/day/${date}`);
   renderDayDetails();
   switchTab('day-details');
   if (fromCalendar) state.calendarDate = new Date(date);
@@ -623,7 +628,7 @@ function init() {
 
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      history.pushState({}, '', '/');
+      updatePath('/');
       state.activeDayDetails = null;
       switchTab(tab.dataset.tab);
       renderAll();
@@ -666,7 +671,7 @@ function init() {
   });
   document.getElementById('todayBtn').addEventListener('click', () => {
     document.getElementById('entryDate').value = todayStr();
-    history.pushState({}, '', '/');
+    updatePath('/');
     state.activeDayDetails = null;
     switchTab('today');
     renderAll();
@@ -675,12 +680,12 @@ function init() {
   document.getElementById('entryDate').addEventListener('change', renderAll);
   document.getElementById('openDayDetailsBtn').addEventListener('click', () => openDayDetails(document.getElementById('entryDate').value));
   document.getElementById('backToCalendarBtn').addEventListener('click', () => {
-    history.pushState({}, '', '/');
+    updatePath('/');
     switchTab('calendar');
   });
   document.getElementById('editTodayBtn').addEventListener('click', () => {
     document.getElementById('entryDate').value = todayStr();
-    history.pushState({}, '', '/');
+    updatePath('/');
     switchTab('today');
     renderAll();
   });
