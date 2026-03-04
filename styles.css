@@ -184,3 +184,6 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .add-grid, .meal-columns, .summary-bottom-grid { grid-template-columns: 1fr; }
   .day { min-height: 80px; }
 }
+
+#liveKcal { display:block; margin-top:0.25rem; }
+#addCustomFoodBtn { margin-top: 0.75rem; }
