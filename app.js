@@ -17,33 +17,20 @@ function createDefaultUserData() {
 }
 
 const GOAL_DELTA_RECOMMENDATIONS = {
-  maintain: { options: [0], hint: 'Maintien: pas de delta, on vise la stabilité.' },
-  loss: {
-    options: [300, 500, 700],
-    hint: 'Perte de poids: déficit conseillé entre 300 et 700 kcal/jour pour rester progressif.'
-  },
-  gain: {
-    options: [200, 300, 400],
-    hint: 'Prise de masse: surplus conseillé entre 200 et 400 kcal/jour pour limiter la prise de gras.'
-  }
+  maintain: { options: [0], hint: 'Maintien · delta 0' },
+  loss: { options: [1000, 750, 500, 300], hint: 'Déficit recommandé' },
+  gain: { options: [300, 500, 700], hint: 'Surplus recommandé' }
 };
 
 const state = {
-  profiles: {
-    default: { id: 'default', name: 'Profil principal', ...createDefaultUserData() }
-  },
+  profiles: { default: { id: 'default', name: 'Profil principal', ...createDefaultUserData() } },
   activeProfileId: 'default',
-  theme: 'light',
+  theme: 'dark',
   calendarDate: new Date()
 };
 
-function activeProfile() {
-  return state.profiles[state.activeProfileId];
-}
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
+const activeProfile = () => state.profiles[state.activeProfileId];
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 function getTDEE(profile) {
   const bmr = profile.sex === 'H'
@@ -77,32 +64,27 @@ function migrateLegacyData(parsed) {
       }
     },
     activeProfileId: 'default',
-    theme: parsed.theme || 'light'
+    theme: parsed.theme || 'dark'
   };
 }
 
 function load() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw) {
-    const parsed = JSON.parse(raw);
-    Object.assign(state, parsed);
+    Object.assign(state, JSON.parse(raw));
     state.calendarDate = new Date();
     return;
   }
-
   const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
   if (!legacyRaw) return;
-  const legacyParsed = JSON.parse(legacyRaw);
-  Object.assign(state, migrateLegacyData(legacyParsed));
+  Object.assign(state, migrateLegacyData(JSON.parse(legacyRaw)));
   state.calendarDate = new Date();
   save();
 }
 
 function ensureDay(date) {
   const user = activeProfile();
-  if (!user.logs[date]) {
-    user.logs[date] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-  }
+  if (!user.logs[date]) user.logs[date] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
   return user.logs[date];
 }
 
@@ -120,9 +102,7 @@ function calcEntry(food, quantity, quantityType) {
 }
 
 function totalsForDay(date) {
-  const day = ensureDay(date);
-  const items = Object.values(day).flat();
-  return items.reduce((acc, item) => {
+  return Object.values(ensureDay(date)).flat().reduce((acc, item) => {
     acc.kcal += item.kcal;
     acc.protein += item.protein;
     acc.carbs += item.carbs;
@@ -131,70 +111,49 @@ function totalsForDay(date) {
   }, { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
-function format(num) {
-  return Number(num).toFixed(0);
-}
-function normalizeText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/œ/g, 'oe')
-    .replace(/æ/g, 'ae')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+const format = (num) => Number(num).toFixed(0);
+const normalizeText = (value) => String(value || '').toLowerCase()
+  .replace(/œ/g, 'oe').replace(/æ/g, 'ae').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
 function updateGoalDeltaOptions() {
   const user = activeProfile();
-  const goalType = user.goal.type;
-  const config = GOAL_DELTA_RECOMMENDATIONS[goalType] || GOAL_DELTA_RECOMMENDATIONS.maintain;
+  const config = GOAL_DELTA_RECOMMENDATIONS[user.goal.type] || GOAL_DELTA_RECOMMENDATIONS.maintain;
   const select = document.getElementById('goalDelta');
-  const hint = document.getElementById('goalDeltaHint');
-
   select.innerHTML = '';
   config.options.forEach((value) => {
     const option = document.createElement('option');
     option.value = String(value);
-    option.textContent = String(value);
+    const sign = user.goal.type === 'loss' ? '-' : user.goal.type === 'gain' ? '+' : '';
+    option.textContent = `${sign}${value} kcal`;
     select.appendChild(option);
   });
-
-  if (!config.options.includes(user.goal.delta)) {
-    user.goal.delta = config.options[0];
-  }
-
+  if (!config.options.includes(user.goal.delta)) user.goal.delta = config.options[0];
   select.value = String(user.goal.delta);
-  hint.textContent = config.hint;
+  document.getElementById('goalDeltaHint').textContent = config.hint;
 }
-
 
 function renderProjection() {
   const user = activeProfile();
-  const tdee = getTDEE(user.profile);
   const delta = user.goal.type === 'maintain' ? 0 : user.goal.delta;
-  const projection = document.getElementById('projectionText');
   const targetWeight = Number(user.profile.targetWeight);
-  let text = `TDEE estimé: ${format(tdee)} kcal/jour. Cible d'apport: ${format(targetIntake())} kcal/jour.`;
+  let text = `${format(targetIntake())} kcal / jour`;
 
   if (user.goal.type === 'loss' && delta > 0) {
-    const kgPerDay = delta / 7700;
-    const daysPerKg = 1 / kgPerDay;
-    text += ` Avec un déficit moyen de ${delta} kcal/jour, tu perds environ 1 kg tous les ~${daysPerKg.toFixed(1)} jours.`;
+    const daysPerKg = 7700 / delta;
+    text = `≈ 1 kg / ${Math.round(daysPerKg)} jours (déficit ${delta} kcal)`;
     if (targetWeight && targetWeight < user.profile.weight) {
       const kgToLose = user.profile.weight - targetWeight;
-      const days = kgToLose * 7700 / delta;
-      const months = days / 30;
-      text += ` Pour perdre ${kgToLose.toFixed(1)} kg → estimation: ${months.toFixed(1)} mois (≈ ${days.toFixed(0)} jours).`;
+      const days = (kgToLose * 7700) / delta;
+      text = `${kgToLose.toFixed(1)} kg → ~${Math.round(days / 30)} mois à -${delta} kcal/j`;
     }
   }
 
   if (user.goal.type === 'gain') {
-    text += ` En prise de masse, un surplus modéré (${Math.min(delta, 500)} kcal/jour) est appliqué pour rester progressif.`;
+    text = `Surplus +${Math.min(delta, 500)} kcal/j · progression modérée`;
   }
 
-  projection.textContent = text;
+  document.getElementById('projectionText').textContent = text;
 }
 
 function renderSearchResults() {
@@ -203,16 +162,13 @@ function renderSearchResults() {
   ul.innerHTML = '';
   if (!query) return;
 
-  const matches = FOOD_DATABASE
-    .filter((food) => normalizeText(food.name).includes(query))
-    .slice(0, 12);
-
+  const matches = FOOD_DATABASE.filter((food) => normalizeText(food.name).includes(query)).slice(0, 12);
   const quantity = Number(document.getElementById('quantity').value || 1);
   const quantityType = document.getElementById('quantityType').value;
 
   matches.forEach((food) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${food.name} · ${food.defaultPortionG}g · ${food.kcalPerPortion} kcal</span>`;
+    li.innerHTML = `<span>${food.name} · ${food.kcalPerPortion} kcal</span>`;
     const btn = document.createElement('button');
     btn.textContent = 'Ajouter';
     btn.addEventListener('click', () => addFood(food, quantity, quantityType));
@@ -225,9 +181,7 @@ function addFood(food, quantity, quantityType) {
   const user = activeProfile();
   const date = document.getElementById('entryDate').value;
   const meal = document.getElementById('mealType').value;
-  const entry = calcEntry(food, quantity, quantityType);
-  ensureDay(date)[meal].push(entry);
-
+  ensureDay(date)[meal].push(calcEntry(food, quantity, quantityType));
   user.recents = [food.name, ...user.recents.filter((n) => n !== food.name)].slice(0, 10);
   save();
   renderAll();
@@ -237,10 +191,10 @@ function renderFavorites() {
   const user = activeProfile();
   const box = document.getElementById('favoriteFoods');
   if (!user.recents.length) {
-    box.innerHTML = '<small>Favoris rapides: les 10 derniers aliments apparaissent ici.</small>';
+    box.innerHTML = '<small class="muted">Favoris récents</small>';
     return;
   }
-  box.innerHTML = '<strong>Ajout rapide</strong>';
+  box.innerHTML = '';
   user.recents.forEach((name) => {
     const food = FOOD_DATABASE.find((f) => f.name === name);
     if (!food) return;
@@ -252,21 +206,21 @@ function renderFavorites() {
 }
 
 function renderMeals() {
-  const date = document.getElementById('entryDate').value;
-  const day = ensureDay(date);
+  const day = ensureDay(document.getElementById('entryDate').value);
   const container = document.getElementById('mealColumns');
   container.innerHTML = '';
 
   MEALS.forEach((meal) => {
-    const col = document.createElement('div');
-    col.className = 'meal-col';
     const list = day[meal.key];
     const total = list.reduce((sum, i) => sum + i.kcal, 0);
-    col.innerHTML = `<h3>${meal.label} (${format(total)} kcal)</h3>`;
+    const col = document.createElement('div');
+    col.className = 'meal-col';
+    col.innerHTML = `<h4>${meal.label} · ${format(total)} kcal</h4>`;
+
     const ul = document.createElement('ul');
     list.forEach((item, index) => {
       const li = document.createElement('li');
-      li.innerHTML = `${item.foodName} (${item.grams}g) - ${format(item.kcal)} kcal`;
+      li.innerHTML = `<span>${item.foodName} (${item.grams}g)</span><span>${format(item.kcal)} kcal</span>`;
       const del = document.createElement('button');
       del.textContent = '×';
       del.addEventListener('click', () => {
@@ -284,27 +238,23 @@ function renderMeals() {
 
 function renderSummary() {
   const user = activeProfile();
-  const date = document.getElementById('entryDate').value;
-  const totals = totalsForDay(date);
+  const totals = totalsForDay(document.getElementById('entryDate').value);
   const tdee = getTDEE(user.profile);
   const intakeTarget = targetIntake();
   const diff = totals.kcal - tdee;
   const targetDiff = totals.kcal - intakeTarget;
-  const objectivePct = intakeTarget ? (totals.kcal / intakeTarget) * 100 : 100;
 
   document.getElementById('summaryStats').innerHTML = `
-    <div><strong>Ingesté:</strong> ${format(totals.kcal)} kcal</div>
-    <div><strong>TDEE:</strong> ${format(tdee)} kcal</div>
-    <div><strong>Déficit / surplus:</strong> ${diff > 0 ? '+' : ''}${format(diff)} kcal</div>
-    <div><strong>Écart à l'objectif:</strong> ${targetDiff > 0 ? '+' : ''}${format(targetDiff)} kcal</div>
-    <div><strong>% objectif:</strong> ${objectivePct.toFixed(1)}%</div>
+    <div class="stat-item"><div class="label">Ingesté</div><div class="value">${format(totals.kcal)} kcal</div></div>
+    <div class="stat-item"><div class="label">TDEE</div><div class="value">${format(tdee)} kcal</div></div>
+    <div class="stat-item"><div class="label">Déficit</div><div class="value ${diff <= 0 ? 'good' : 'bad'}">${diff > 0 ? '+' : ''}${format(diff)} kcal</div></div>
+    <div class="stat-item"><div class="label">Écart objectif</div><div class="value ${Math.abs(targetDiff) < 120 ? 'good' : 'bad'}">${targetDiff > 0 ? '+' : ''}${format(targetDiff)} kcal</div></div>
   `;
 
   const macroTotalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9;
   const p = macroTotalKcal ? (totals.protein * 4 / macroTotalKcal) * 100 : 0;
   const c = macroTotalKcal ? (totals.carbs * 4 / macroTotalKcal) * 100 : 0;
   const f = macroTotalKcal ? (totals.fat * 9 / macroTotalKcal) * 100 : 0;
-
   document.getElementById('macroChart').innerHTML = `
     <div class="bar protein" style="width:${p}%">P ${p.toFixed(0)}%</div>
     <div class="bar carbs" style="width:${c}%">G ${c.toFixed(0)}%</div>
@@ -312,9 +262,7 @@ function renderSummary() {
   `;
 
   const min = user.profile.sex === 'F' ? 1200 : 1500;
-  document.getElementById('intakeAlert').textContent = totals.kcal < min
-    ? `⚠️ Apport bas: ${format(totals.kcal)} kcal (< ${min} kcal recommandé minimum).`
-    : '';
+  document.getElementById('intakeAlert').textContent = totals.kcal < min ? `⚠ Apport bas: ${format(totals.kcal)} (< ${min})` : '';
 }
 
 function dayColor(date) {
@@ -323,7 +271,7 @@ function dayColor(date) {
   if (!total) return 'none';
   const ratio = Math.abs(total - target) / target;
   if (ratio <= 0.1) return 'green';
-  if (ratio <= 0.15) return 'orange';
+  if (ratio <= 0.2) return 'orange';
   return 'red';
 }
 
@@ -355,12 +303,15 @@ function renderCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(year, month, day).toISOString().slice(0, 10);
-    const el = document.createElement('button');
-    el.className = `day ${dayColor(date)}`;
     const kcal = totalsForDay(date).kcal;
-    el.innerHTML = `<span>${day}</span><small>${kcal ? format(kcal) : '-'} kcal</small>`;
+    const color = dayColor(date);
+    const el = document.createElement('button');
+    el.className = `day ${color}`;
+    el.title = `${date} · ${kcal ? `${format(kcal)} kcal` : 'Pas de log'}`;
+    el.innerHTML = `<span>${day}</span><span class="dot"></span>`;
     el.addEventListener('click', () => {
       document.getElementById('entryDate').value = date;
+      switchTab('today');
       renderAll();
     });
     grid.appendChild(el);
@@ -386,12 +337,9 @@ function exportCsv() {
 }
 
 function exportBackup() {
-  const payload = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    data: state
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), data: state }, null, 2)], {
+    type: 'application/json;charset=utf-8;'
+  });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `calorie-backup-${todayStr()}.json`;
@@ -404,22 +352,17 @@ function importBackup(file) {
   reader.onload = () => {
     try {
       const parsed = JSON.parse(reader.result);
-      if (!parsed.data?.profiles) {
-        alert('Fichier invalide: profils manquants.');
-        return;
-      }
+      if (!parsed.data?.profiles) return alert('Fichier invalide.');
       Object.assign(state, parsed.data);
       state.calendarDate = new Date();
-      if (!state.profiles[state.activeProfileId]) {
-        state.activeProfileId = Object.keys(state.profiles)[0];
-      }
+      if (!state.profiles[state.activeProfileId]) state.activeProfileId = Object.keys(state.profiles)[0];
       save();
       renderProfileSelector();
       bindProfile();
       renderAll();
-      alert('Sauvegarde importée avec succès.');
+      alert('Import OK');
     } catch {
-      alert('Impossible de lire le fichier JSON.');
+      alert('JSON invalide.');
     }
   };
   reader.readAsText(file);
@@ -435,6 +378,7 @@ function renderProfileSelector() {
     select.appendChild(option);
   });
   select.value = state.activeProfileId;
+  document.getElementById('profileName').value = activeProfile().name;
 }
 
 function bindProfile() {
@@ -443,13 +387,17 @@ function bindProfile() {
     const el = document.getElementById(id);
     el.value = user.profile[id];
     el.onchange = () => {
-      user.profile[id] = ['age', 'weight', 'height', 'activity', 'targetWeight'].includes(id)
-        ? Number(el.value)
-        : el.value;
+      user.profile[id] = ['age', 'weight', 'height', 'activity', 'targetWeight'].includes(id) ? Number(el.value) : el.value;
       save();
       renderAll();
     };
   });
+
+  document.getElementById('profileName').onchange = (e) => {
+    user.name = e.target.value.trim() || user.name;
+    save();
+    renderProfileSelector();
+  };
 
   document.getElementById('goalType').value = user.goal.type;
   updateGoalDeltaOptions();
@@ -480,16 +428,18 @@ function createProfile(name) {
 
 function deleteActiveProfile() {
   const ids = Object.keys(state.profiles);
-  if (ids.length <= 1) {
-    alert('Au moins un profil est obligatoire.');
-    return;
-  }
+  if (ids.length <= 1) return alert('Un profil minimum.');
   delete state.profiles[state.activeProfileId];
   state.activeProfileId = Object.keys(state.profiles)[0];
   save();
   renderProfileSelector();
   bindProfile();
   renderAll();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach((el) => el.classList.toggle('active', el.dataset.panel === tab));
 }
 
 function renderAll() {
@@ -506,6 +456,10 @@ function init() {
   document.getElementById('entryDate').value = todayStr();
   renderProfileSelector();
   bindProfile();
+
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
 
   document.getElementById('profileSelect').addEventListener('change', (e) => {
     state.activeProfileId = e.target.value;
@@ -534,8 +488,10 @@ function init() {
   });
   document.getElementById('todayBtn').addEventListener('click', () => {
     document.getElementById('entryDate').value = todayStr();
+    switchTab('today');
     renderAll();
   });
+
   document.getElementById('entryDate').addEventListener('change', renderAll);
   document.getElementById('exportBtn').addEventListener('click', exportCsv);
   document.getElementById('backupExportBtn').addEventListener('click', exportBackup);
