@@ -1,10 +1,10 @@
 const STORAGE_KEY = 'calorie-tracker-v2';
 const LEGACY_STORAGE_KEY = 'calorie-tracker-v1';
 const MEALS = [
-  { key: 'breakfast', label: 'Petit-déj' },
-  { key: 'lunch', label: 'Déjeuner' },
-  { key: 'dinner', label: 'Dîner' },
-  { key: 'snacks', label: 'Collations' }
+  { key: 'breakfast', label: 'Petit-déj', icon: '🌅' },
+  { key: 'lunch', label: 'Déjeuner', icon: '☀️' },
+  { key: 'dinner', label: 'Dîner', icon: '🌙' },
+  { key: 'snacks', label: 'Collation', icon: '⚡' }
 ];
 
 function createDefaultUserData() {
@@ -146,6 +146,50 @@ function calcEntry(food, quantity, quantityType) {
   };
 }
 
+function getWeeklyAverageKcal() {
+  const now = new Date();
+  let total = 0;
+  for (let i = 0; i < 7; i += 1) {
+    const day = new Date(now);
+    day.setDate(now.getDate() - i);
+    total += totalsForDay(day.toISOString().slice(0, 10)).kcal;
+  }
+  return total / 7;
+}
+
+function getStreakInGoal() {
+  const target = targetIntake();
+  let streak = 0;
+  const now = new Date();
+  for (let i = 0; i < 60; i += 1) {
+    const day = new Date(now);
+    day.setDate(now.getDate() - i);
+    const key = day.toISOString().slice(0, 10);
+    const kcal = totalsForDay(key).kcal;
+    if (!kcal) break;
+    if (Math.abs(kcal - target) / target <= 0.15) streak += 1;
+    else break;
+  }
+  return streak;
+}
+
+function buildGoalRing(pctGoal, theme = 'neutral') {
+  const size = 180;
+  const radius = 68;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.max(0, Math.min(140, pctGoal));
+  const offset = circumference * (1 - progress / 100);
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-label="Progression objectif">
+      <circle cx="90" cy="90" r="${radius}" stroke="rgba(148,163,184,0.3)" stroke-width="14" fill="none"></circle>
+      <circle cx="90" cy="90" r="${radius}" stroke="var(--${theme})" stroke-width="14" fill="none" stroke-linecap="round"
+        transform="rotate(-90 90 90)" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle>
+      <text x="90" y="88" text-anchor="middle" class="ring-number">${pctGoal.toFixed(0)}%</text>
+      <text x="90" y="110" text-anchor="middle" class="ring-label">objectif</text>
+    </svg>
+  `;
+}
+
 function updateGoalDeltaOptions(reset = false) {
   const user = activeProfile();
   const config = GOAL_DELTA_RECOMMENDATIONS[user.goal.type] || GOAL_DELTA_RECOMMENDATIONS.maintain;
@@ -161,30 +205,31 @@ function updateGoalDeltaOptions(reset = false) {
   if (user.goal.type === 'maintain') user.goal.delta = 0;
   if (reset || !config.options.includes(user.goal.delta)) user.goal.delta = config.options[0];
   select.value = String(user.goal.delta);
-  document.getElementById('goalDeltaHint').textContent = config.hint;
+  document.getElementById('goalDeltaHint').textContent = `${config.hint} · ℹ️ Basé sur 7700 kcal/kg • Safe: 0.5-1kg/sem max`;
 }
 
 function renderProjection() {
   const user = activeProfile();
   const delta = user.goal.type === 'maintain' ? 0 : user.goal.delta;
   const targetWeight = Number(user.profile.targetWeight);
-  let text = `${format(targetIntake())} kcal / jour`;
+  const tdee = getTDEE(user.profile);
+  let text = `🔥 TDEE estimé: ${format(tdee)} kcal/j`;
 
   if (user.goal.type === 'loss' && delta > 0) {
     const weeklyKg = (delta * 7) / 7700;
-    text = `Perte estimée: ${weeklyKg.toFixed(2)} kg/sem (max safe 1.00)`;
+    text = `⬇️ ${format(tdee - delta)} kcal/j · perte ~${weeklyKg.toFixed(2)} kg/sem`;
     if (targetWeight && targetWeight < user.profile.weight) {
       const kgToLose = user.profile.weight - targetWeight;
       const days = (kgToLose * 7700) / delta;
-      text = `${kgToLose.toFixed(1)} kg → ~${Math.ceil(days / 7)} semaines (estimation approx.)`;
+      text += ` · ${kgToLose.toFixed(1)}kg ≈ ${Math.ceil(days / 7)} semaines`;
     }
   }
 
   if (user.goal.type === 'gain') {
-    text = `Surplus +${delta} kcal/j · progression modérée`;
+    text = `⬆️ ${format(tdee + delta)} kcal/j · surplus +${delta} kcal`;
   }
 
-  document.getElementById('projectionText').textContent = `${text} · ℹ️ Estimation approx. Consultez un pro santé.`;
+  document.getElementById('projectionText').textContent = `${text} ℹ️ Basé sur 7700 kcal/kg • Consulte un pro en cas de doute.`;
 }
 
 function renderSearchResults() {
@@ -235,7 +280,7 @@ function renderFavorites() {
   const box = document.getElementById('favoriteFoods');
   if (!Array.isArray(user.favorites)) user.favorites = [];
   if (!user.favorites.length) {
-    box.innerHTML = '<small class="muted">Ajoute tes aliments favoris pour aller plus vite !</small>';
+    box.innerHTML = '<small class="muted">Ajoute tes favoris pour un log en 1 clic.</small>';
     return;
   }
 
@@ -247,7 +292,7 @@ function renderFavorites() {
     wrap.className = 'favorite-item';
     const btn = document.createElement('button');
     btn.className = 'btn-outline favorite-btn';
-    btn.textContent = favorite.name;
+    btn.textContent = `➕ ${favorite.name}`;
     btn.addEventListener('click', () => addFood(food, 1, 'portion'));
     wrap.appendChild(btn);
 
@@ -267,10 +312,7 @@ function renderFavorites() {
 function addFavorite(food) {
   const user = activeProfile();
   if (user.favorites.some((fav) => normalizeText(fav.name) === normalizeText(food.name))) return;
-  if (user.favorites.length >= FAVORITES_MAX) {
-    alert(`Maximum ${FAVORITES_MAX} favoris.`);
-    return;
-  }
+  if (user.favorites.length >= FAVORITES_MAX) return alert(`Maximum ${FAVORITES_MAX} favoris.`);
   user.favorites.push({ name: food.name, kcal: food.kcalPerPortion, portionDefault: food.defaultPortionG, unit: 'portion(s)' });
   save();
   renderFavorites();
@@ -296,7 +338,7 @@ function renderMeals() {
     details.open = true;
 
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span>${meal.label}</span><strong>${format(total)} kcal</strong>`;
+    summary.innerHTML = `<span>${meal.icon} ${meal.label}</span><strong>${format(total)} kcal</strong>`;
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-outline tiny-btn';
@@ -324,6 +366,7 @@ function renderMeals() {
       li.appendChild(del);
       ul.appendChild(li);
     });
+    if (!list.length) ul.innerHTML = '<li><span class="muted">Aucun aliment</span></li>';
     details.appendChild(ul);
     container.appendChild(details);
   });
@@ -336,41 +379,70 @@ function renderSummary() {
   const tdee = getTDEE(user.profile);
   const intakeTarget = targetIntake();
   const deficit = tdee - totals.kcal;
+  const pctGoal = intakeTarget ? (totals.kcal / intakeTarget) * 100 : 0;
   const targetDiff = totals.kcal - intakeTarget;
 
+  const deltaClass = deficit >= 0 && deficit <= 750 ? 'good' : deficit > 750 ? 'warn' : 'bad';
+  const intakeClass = totals.kcal ? 'primary' : 'muted-val';
+  const pctClass = pctGoal >= 85 && pctGoal <= 110 ? 'good' : pctGoal > 120 || pctGoal < 60 ? 'bad' : 'warn';
+
   document.getElementById('summaryStats').innerHTML = `
-    <div class="stat-item"><div class="label">🍽️ Ingesté</div><div class="value">${format(totals.kcal)} kcal</div></div>
-    <div class="stat-item"><div class="label">🔥 TDEE</div><div class="value">${format(tdee)} kcal</div></div>
-    <div class="stat-item"><div class="label">⬇️ Déficit</div><div class="value ${deficit >= 0 ? 'good' : 'bad'}">${deficit >= 0 ? '-' : '+'}${format(Math.abs(deficit))} kcal</div></div>
-    <div class="stat-item"><div class="label">🎯 Écart objectif</div><div class="value ${Math.abs(targetDiff) < 120 ? 'good' : 'bad'}">${targetDiff > 0 ? '+' : ''}${format(targetDiff)} kcal</div></div>
+    <div class="stat-item"><div class="label">🍽️ Ingesté</div><div class="value big ${intakeClass}">${format(totals.kcal)} kcal</div></div>
+    <div class="stat-item"><div class="label">🔥 TDEE</div><div class="value big">${format(tdee)} kcal</div></div>
+    <div class="stat-item"><div class="label">🧮 Déficit</div><div class="value big ${deltaClass}">${deficit >= 0 ? '-' : '+'}${format(Math.abs(deficit))} kcal</div></div>
+    <div class="stat-item"><div class="label">🎯 % objectif</div><div class="value big ${pctClass}">${pctGoal.toFixed(0)}%</div><small class="muted">${targetDiff > 0 ? '+' : ''}${format(targetDiff)} kcal</small></div>
   `;
 
   const macroTotalKcal = totals.protein * 4 + totals.carbs * 4 + totals.fat * 9;
   const p = macroTotalKcal ? (totals.protein * 4 / macroTotalKcal) * 100 : 0;
   const c = macroTotalKcal ? (totals.carbs * 4 / macroTotalKcal) * 100 : 0;
   const f = macroTotalKcal ? (totals.fat * 9 / macroTotalKcal) * 100 : 0;
+  const pClass = p >= 50 ? 'macro-good' : '';
   document.getElementById('macroChart').innerHTML = `
-    <div class="bar protein" style="width:${p}%">P ${p.toFixed(0)}%</div>
-    <div class="bar carbs" style="width:${c}%">G ${c.toFixed(0)}%</div>
-    <div class="bar fat" style="width:${f}%">L ${f.toFixed(0)}%</div>
+    <div class="bar protein ${pClass}" style="width:${Math.max(10, p)}%" title="Protéines ${p.toFixed(0)}%">P ${p.toFixed(0)}%</div>
+    <div class="bar carbs" style="width:${Math.max(10, c)}%" title="Glucides ${c.toFixed(0)}%">G ${c.toFixed(0)}%</div>
+    <div class="bar fat" style="width:${Math.max(10, f)}%" title="Lipides ${f.toFixed(0)}%">L ${f.toFixed(0)}%</div>
   `;
+
+  const ringTheme = pctGoal < 65 ? 'danger' : pctGoal > 110 ? 'warning' : deficit >= 0 && deficit <= 750 ? 'success' : 'primary';
+  document.getElementById('goalProgress').innerHTML = buildGoalRing(pctGoal, ringTheme);
 
   const min = user.profile.sex === 'F' ? 1200 : 1500;
   const banner = document.getElementById('topAlert');
-  banner.textContent = totals.kcal < min
-    ? `⚠️ Apport très bas (${format(totals.kcal)} kcal). Minimum recommandé: ${min} kcal.`
-    : '';
-  banner.classList.toggle('show', Boolean(banner.textContent));
+  const warnings = [];
+  if (totals.kcal < min) warnings.push(`⚠️ Apport très bas (${format(totals.kcal)} kcal). Ajoute une collation protéinée pour atteindre le minimum (${min} kcal).`);
+  if (deficit > 750) warnings.push('🟠 Déficit élevé (>750 kcal). Reste progressif et consulte un pro si besoin.');
+  if (totals.kcal > tdee + 500) warnings.push('🔴 Surplus important détecté. Reviens vers un déficit modéré demain.');
+
+  banner.textContent = warnings.join(' ');
+  banner.classList.toggle('show', warnings.length > 0);
+
+  const streak = getStreakInGoal();
+  const weeklyAvg = getWeeklyAverageKcal();
+  document.getElementById('streakBadge').textContent = `🔥 Streak ${streak} ${streak > 1 ? 'jours' : 'jour'}`;
+  const goalBadge = document.getElementById('goalBadge');
+  if (pctGoal >= 85 && pctGoal <= 110) {
+    goalBadge.textContent = '✅ Bien joué ! Dans l\'objectif';
+    goalBadge.className = 'badge-pill success';
+  } else {
+    goalBadge.textContent = '💬 Continue, tu progresses';
+    goalBadge.className = 'badge-pill neutral';
+  }
+  document.getElementById('weeklyAvgBadge').textContent = `📊 Moy. hebdo ${format(weeklyAvg)} kcal`;
 }
 
-function dayColor(date) {
-  const total = totalsForDay(date).kcal;
+function getCalendarStatus(date) {
+  const kcal = totalsForDay(date).kcal;
+  if (!kcal) return { color: 'none', emoji: '•', heat: 0, text: 'Aucune donnée' };
   const target = targetIntake();
-  if (!total) return 'none';
-  const ratio = Math.abs(total - target) / target;
-  if (ratio <= 0.1) return 'green';
-  if (ratio <= 0.2) return 'orange';
-  return 'red';
+  const diff = kcal - target;
+  const absRatio = Math.abs(diff) / target;
+
+  if (kcal < (activeProfile().profile.sex === 'F' ? 1200 : 1500)) return { color: 'red', emoji: '🛑', heat: 1, text: 'Apport trop bas' };
+  if (absRatio <= 0.1) return { color: 'blue', emoji: '🙂', heat: 0.2, text: 'Maintien' };
+  if (diff < 0 && Math.abs(diff) <= 750) return { color: 'green', emoji: '✅', heat: 0.4, text: 'Déficit safe' };
+  if (diff > 0 && absRatio <= 0.25) return { color: 'orange', emoji: '😐', heat: 0.65, text: 'Surplus léger' };
+  return { color: 'red', emoji: diff > 0 ? '🔺' : '🔻', heat: 0.9, text: 'Zone alerte' };
 }
 
 function updatePath(path) {
@@ -399,7 +471,7 @@ function renderDayDetails() {
   document.getElementById('dayDetailsSummary').innerHTML = `
     <div class="stat-item"><div class="label">Ingesté</div><div class="value">${format(totals.kcal)} kcal</div></div>
     <div class="stat-item"><div class="label">TDEE</div><div class="value">${format(tdee)} kcal</div></div>
-    <div class="stat-item"><div class="label">Déficit</div><div class="value ${tdee - totals.kcal >= 0 ? 'good' : 'bad'}">${format(tdee - totals.kcal)} kcal</div></div>
+    <div class="stat-item"><div class="label">Déficit</div><div class="value ${(tdee - totals.kcal) >= 0 ? 'good' : 'bad'}">${format(tdee - totals.kcal)} kcal</div></div>
     <div class="stat-item"><div class="label">% objectif</div><div class="value">${pctGoal.toFixed(0)}%</div></div>
   `;
 
@@ -412,7 +484,7 @@ function renderDayDetails() {
         ${isToday ? `<button class="btn-outline tiny-btn" data-day-remove="${meal.key}:${idx}:${date}">×</button>` : ''}
       </li>
     `).join('') || '<li><span class="muted">Aucun aliment</span></li>';
-    return `<div class="meal-detail"><h4>${meal.label} · ${format(subtotal)} kcal</h4><ul>${items}</ul></div>`;
+    return `<div class="meal-detail"><h4>${meal.icon} ${meal.label} · ${format(subtotal)} kcal</h4><ul>${items}</ul></div>`;
   }).join('');
 
   document.getElementById('dayDetailsMeals').innerHTML = mealsHtml;
@@ -429,10 +501,35 @@ function renderDayDetails() {
   });
 }
 
+function fillMonthYearControls() {
+  const monthSelect = document.getElementById('calendarMonth');
+  const yearSelect = document.getElementById('calendarYear');
+  if (!monthSelect.options.length) {
+    [...Array(12).keys()].forEach((m) => {
+      const option = document.createElement('option');
+      option.value = String(m);
+      option.textContent = new Date(2024, m, 1).toLocaleDateString('fr-FR', { month: 'long' });
+      monthSelect.appendChild(option);
+    });
+  }
+  if (!yearSelect.options.length) {
+    const current = new Date().getFullYear();
+    for (let year = current - 3; year <= current + 3; year += 1) {
+      const option = document.createElement('option');
+      option.value = String(year);
+      option.textContent = String(year);
+      yearSelect.appendChild(option);
+    }
+  }
+  monthSelect.value = String(state.calendarDate.getMonth());
+  yearSelect.value = String(state.calendarDate.getFullYear());
+}
+
 function renderCalendar() {
   const grid = document.getElementById('calendarGrid');
   const title = document.getElementById('calendarTitle');
   grid.innerHTML = '';
+  fillMonthYearControls();
 
   const d = state.calendarDate;
   const year = d.getFullYear();
@@ -455,29 +552,94 @@ function renderCalendar() {
   }
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const tdee = getTDEE(activeProfile().profile);
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(year, month, day).toISOString().slice(0, 10);
     const kcal = totalsForDay(date).kcal;
-    const color = dayColor(date);
+    const status = getCalendarStatus(date);
+    const protein = totalsForDay(date).protein;
+    const totalKcal = totalsForDay(date).kcal;
+    const proteinPct = totalKcal ? (protein * 4 / totalKcal) * 100 : 0;
+
     const el = document.createElement('button');
-    el.className = `day ${color}`;
-    el.title = `${date} · ${kcal ? `${format(kcal)} kcal` : 'Pas de log'} · déficit ${format(getTDEE(activeProfile().profile) - kcal)} kcal`;
-    el.innerHTML = `<span class="day-top"><strong>${day}</strong><span class="dot"></span></span><span class="day-kcal">${kcal ? `${format(kcal)} kcal` : '—'}</span>`;
+    el.className = `day ${status.color}`;
+    el.style.setProperty('--heat', status.heat);
+    const deficit = tdee - kcal;
+    el.title = `${status.text} ${deficit >= 0 ? 'Déficit' : 'Surplus'} ${format(Math.abs(deficit))} kcal • ${proteinPct.toFixed(0)}% P`;
+    el.innerHTML = `<span class="day-top"><strong>${day}</strong><span class="dot">${status.emoji}</span></span><span class="day-kcal">${kcal ? `${format(kcal)} kcal` : '—'}</span>`;
     el.addEventListener('click', () => openDayDetails(date, true));
     grid.appendChild(el);
   }
 }
 
+function buildHistoryData(days = 30) {
+  const data = [];
+  const now = new Date();
+  const tdee = getTDEE(activeProfile().profile);
+  const objective = targetIntake();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const totals = totalsForDay(key);
+    data.push({
+      date: key,
+      kcal: totals.kcal,
+      tdee,
+      deficit: tdee - totals.kcal,
+      pct: objective ? (totals.kcal / objective) * 100 : 0
+    });
+  }
+  return data;
+}
+
+function renderHistory() {
+  const rows = buildHistoryData(30);
+  const body = document.getElementById('historyPreviewBody');
+  body.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${new Date(row.date).toLocaleDateString('fr-FR')}</td>
+      <td>${format(row.kcal)}</td>
+      <td>${format(row.tdee)}</td>
+      <td class="${row.deficit >= 0 ? 'good' : 'bad'}">${row.deficit >= 0 ? '-' : '+'}${format(Math.abs(row.deficit))}</td>
+      <td>${row.pct.toFixed(0)}%</td>
+    </tr>
+  `).join('');
+
+  const avg = rows.reduce((sum, row) => sum + row.kcal, 0) / rows.length;
+  const avgDeficit = rows.reduce((sum, row) => sum + row.deficit, 0) / rows.length;
+  document.getElementById('historyStats').innerHTML = `
+    <div class="stat-item"><div class="label">Moyenne kcal</div><div class="value">${format(avg)}</div></div>
+    <div class="stat-item"><div class="label">Déficit moyen</div><div class="value ${avgDeficit >= 0 ? 'good' : 'bad'}">${avgDeficit >= 0 ? '-' : '+'}${format(Math.abs(avgDeficit))}</div></div>
+    <div class="stat-item"><div class="label">Objectif moyen</div><div class="value">${rows.reduce((s, r) => s + r.pct, 0) / rows.length | 0}%</div></div>
+  `;
+
+  const maxY = Math.max(...rows.map((r) => Math.max(r.kcal, r.tdee)), 2000);
+  const pointsReal = rows.map((r, i) => `${(i / (rows.length - 1)) * 100},${100 - (r.kcal / maxY) * 100}`).join(' ');
+  const pointsTarget = rows.map((r, i) => `${(i / (rows.length - 1)) * 100},${100 - (targetIntake() / maxY) * 100}`).join(' ');
+  document.getElementById('historyChart').innerHTML = `
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Courbe kcal réelle et cible">
+      <polyline points="${pointsTarget}" class="line-target" />
+      <polyline points="${pointsReal}" class="line-real" />
+    </svg>
+    <div class="chart-legend"><span class="legend-target">— Cible</span><span class="legend-real">— Réel</span></div>
+  `;
+}
+
 function exportCsv() {
   const days = Number(document.getElementById('exportDays').value);
   const now = new Date();
-  const rows = ['date,kcal,protein,carbs,fat'];
+  const tdee = getTDEE(activeProfile().profile);
+  const objective = targetIntake();
+  const rows = ['date,kcal_ingere,tdee,deficit,pourcent_objectif'];
   for (let i = 0; i < days; i += 1) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
     const key = d.toISOString().slice(0, 10);
     const t = totalsForDay(key);
-    rows.push(`${key},${t.kcal.toFixed(1)},${t.protein.toFixed(1)},${t.carbs.toFixed(1)},${t.fat.toFixed(1)}`);
+    const deficit = tdee - t.kcal;
+    const pct = objective ? (t.kcal / objective) * 100 : 0;
+    rows.push(`${key},${t.kcal.toFixed(1)},${tdee.toFixed(1)},${deficit.toFixed(1)},${pct.toFixed(1)}`);
   }
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
@@ -606,6 +768,7 @@ function renderAll() {
   renderMeals();
   renderSummary();
   renderCalendar();
+  renderHistory();
   if (state.activeDayDetails) renderDayDetails();
 }
 
@@ -669,6 +832,15 @@ function init() {
     state.calendarDate.setMonth(state.calendarDate.getMonth() + 1);
     renderCalendar();
   });
+  document.getElementById('calendarMonth').addEventListener('change', (e) => {
+    state.calendarDate.setMonth(Number(e.target.value));
+    renderCalendar();
+  });
+  document.getElementById('calendarYear').addEventListener('change', (e) => {
+    state.calendarDate.setFullYear(Number(e.target.value));
+    renderCalendar();
+  });
+
   document.getElementById('todayBtn').addEventListener('click', () => {
     document.getElementById('entryDate').value = todayStr();
     updatePath('/');
