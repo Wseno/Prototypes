@@ -69,7 +69,7 @@ h1 { margin: 0.25rem 0 1.25rem; font-size: 24px; }
   font-size: 16px;
 }
 .tab:hover { background: rgba(45, 125, 246, 0.15); }
-.tab.active { background: rgba(45, 125, 246, 0.24); border-color: rgba(45, 125, 246, 0.45); }
+.tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
 
 .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; }
 .switch { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 14px; }
@@ -85,7 +85,7 @@ h4 { margin: 0; font-size: 18px; }
 .compact-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.add-grid { grid-template-columns: minmax(240px, 1fr) 120px 140px; }
+.add-grid { grid-template-columns: minmax(240px, 1fr) 120px 170px; }
 
 label { display: flex; flex-direction: column; gap: 0.45rem; color: var(--muted); font-size: 14px; }
 input, select, button {
@@ -98,6 +98,7 @@ input, select, button {
 }
 button { background: var(--primary); border: none; color: #fff; font-weight: 600; cursor: pointer; }
 .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { background: rgba(30, 58, 138, 0.4); }
 .btn-danger { background: var(--danger); }
 .tiny-btn { padding: 0.2rem 0.5rem; font-size: 14px; }
 .file-btn { position: relative; overflow: hidden; cursor: pointer; }
@@ -128,6 +129,9 @@ button { background: var(--primary); border: none; color: #fff; font-weight: 600
 .fat { background: #ef4444; }
 
 .favorites { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+.favorite-item { position: relative; }
+.favorite-btn { padding-right: 1.2rem; }
+.favorite-remove { position: absolute; top: -8px; right: -8px; border: 1px solid rgba(239,68,68,0.5); background: rgba(220,38,38,0.9); color: #fff; width: 22px; height: 22px; border-radius: 999px; padding: 0; line-height: 1; }
 .search-results { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 0.6rem; }
 .search-results li {
   display: flex;
@@ -188,3 +192,9 @@ button { background: var(--primary); border: none; color: #fff; font-weight: 600
   .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .add-grid, .meal-columns { grid-template-columns: 1fr; }
 }
+
+.quick-add { padding: 1.75rem; }
+#foodSearch:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+#mealType { min-width: 160px; font-size: 15px; }
+#toggleFavoriteEditBtn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+.search-results li button { white-space: nowrap; }

@@ -14,10 +14,10 @@
           <h1>Calorie Tracker</h1>
         </div>
         <nav class="tabs" aria-label="Navigation principale">
-          <button class="tab active" data-tab="today" aria-label="Aujourd'hui">🏠 Aujourd'hui</button>
-          <button class="tab" data-tab="calendar" aria-label="Calendrier">🗓️ Calendrier</button>
-          <button class="tab" data-tab="profile" aria-label="Profil et objectifs">👤 Profil</button>
-          <button class="tab" data-tab="history" aria-label="Historique et export">📦 Historique</button>
+          <button type="button" class="tab active" data-tab="today" aria-selected="true" aria-label="Aujourd'hui">🏠 Aujourd'hui</button>
+          <button type="button" class="tab" data-tab="calendar" aria-selected="false" aria-label="Calendrier">🗓️ Calendrier</button>
+          <button type="button" class="tab" data-tab="profile" aria-selected="false" aria-label="Profil et objectifs">👤 Profil &amp; Objectifs</button>
+          <button type="button" class="tab" data-tab="history" aria-selected="false" aria-label="Historique et export">📦 Historique / Export</button>
         </nav>
         <div class="sidebar-footer">
           <label class="switch" aria-label="Activer mode sombre">
@@ -53,18 +53,19 @@
           <section class="card quick-add">
             <div class="compact-row">
               <h3>Ajout rapide</h3>
+              <button id="toggleFavoriteEditBtn" class="btn-outline" type="button">✏️ Gérer favoris</button>
               <label>Repas
                 <select id="mealType" aria-label="Type de repas">
                   <option value="breakfast">Petit-déj</option>
                   <option value="lunch">Déjeuner</option>
                   <option value="dinner">Dîner</option>
-                  <option value="snacks">Collations</option>
+                  <option value="snacks">Collation</option>
                 </select>
               </label>
             </div>
             <div class="grid add-grid">
               <label>Aliment
-                <input id="foodSearch" list="foodSuggestions" type="search" placeholder="Rechercher" aria-label="Rechercher aliment" />
+                <input id="foodSearch" list="foodSuggestions" type="search" placeholder="Rechercher un aliment…" aria-label="Rechercher aliment" />
               </label>
               <datalist id="foodSuggestions"></datalist>
               <label>Qté
@@ -72,8 +73,11 @@
               </label>
               <label>Unité
                 <select id="quantityType">
-                  <option value="portion">Portion</option>
-                  <option value="grams">Grammes</option>
+                  <option value="portion">portion(s)</option>
+                  <option value="grams">g</option>
+                  <option value="ml">ml</option>
+                  <option value="slice">tranche(s)</option>
+                  <option value="piece">pièce(s)</option>
                 </select>
               </label>
             </div>
