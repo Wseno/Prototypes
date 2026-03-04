@@ -36,11 +36,19 @@ const state = {
 const FAVORITES_MAX = 10;
 const DEFAULT_FAVORITE_NAMES = ['Œuf entier', 'Thon naturel', 'Jambon blanc', 'Steak haché 5%', 'Yaourt nature'];
 const QUICK_UNITS = [
-  { key: 'portion', label: 'portion(s)', type: 'portion', factor: 1 },
-  { key: 'grams', label: 'g', type: 'grams', factor: 1 },
-  { key: 'ml', label: 'ml', type: 'grams', factor: 1 },
-  { key: 'slice', label: 'tranche(s)', type: 'portion', factor: 0.5 },
-  { key: 'piece', label: 'pièce(s)', type: 'portion', factor: 1 }
+  { key: 'grams', label: 'g', type: 'weight', grams: 1 },
+  { key: 'ml', label: 'ml', type: 'weight', grams: 1 },
+  { key: 'portion', label: 'portion(s)', type: 'portion', ratio: 1 },
+  { key: 'slice', label: 'tranche(s)', type: 'portion', ratio: 1 },
+  { key: 'thinSlice', label: 'tranche(s) fine(s)', type: 'portion', ratio: 0.5 },
+  { key: 'thickSlice', label: 'tranche(s) épaisse(s)', type: 'portion', ratio: 1.5 },
+  { key: 'tbsp', label: 'cs', type: 'portion', ratio: 1 },
+  { key: 'tsp', label: 'cc', type: 'portion', ratio: 0.33 },
+  { key: 'piece', label: 'pièce(s)', type: 'portion', ratio: 1 },
+  { key: 'pot125', label: 'pot 125g', type: 'weight', grams: 125 },
+  { key: 'pot150', label: 'pot 150g', type: 'weight', grams: 150 },
+  { key: 'half', label: '1/2', type: 'portion', ratio: 0.5 },
+  { key: 'quarter', label: '1/4', type: 'portion', ratio: 0.25 }
 ];
 
 const activeProfile = () => state.profiles[state.activeProfileId];
@@ -109,7 +117,7 @@ function enrichProfile(profile) {
   profile.favorites = DEFAULT_FAVORITE_NAMES
     .map((name) => FOOD_DATABASE.find((food) => normalizeText(food.name) === normalizeText(name)))
     .filter(Boolean)
-    .map((food) => ({ name: food.name, kcal: food.kcalPerPortion, portionDefault: food.defaultPortionG, unit: 'portion(s)' }));
+    .map((food) => ({ name: food.name, kcal: food.kcal, portionDefault: food.defaultPortion, unit: food.unit || 'portion(s)' }));
 }
 
 function ensureDay(date) {
@@ -132,17 +140,33 @@ function getUnitConfig(unitKey) {
   return QUICK_UNITS.find((unit) => unit.key === unitKey) || QUICK_UNITS[0];
 }
 
+function getFoodDefaultGrams(food) {
+  if (food.unit === 'g' || food.unit === 'ml') return Number(food.defaultPortion || 100);
+  return food.kcalPer100g && food.kcal ? Number(((food.kcal / food.kcalPer100g) * 100).toFixed(1)) : Number(food.defaultPortion || 100);
+}
+
+function calculateQuickKcal(food, quantity, quantityType) {
+  if (!food) return 0;
+  const unit = getUnitConfig(quantityType);
+  if (unit.type === 'weight' && food.kcalPer100g != null) {
+    const grams = quantity * unit.grams;
+    return Number(((grams / 100) * food.kcalPer100g).toFixed(1));
+  }
+  return Number((quantity * food.kcal * (unit.ratio || 1)).toFixed(1));
+}
+
 function calcEntry(food, quantity, quantityType) {
   const unit = getUnitConfig(quantityType);
-  const grams = unit.type === 'grams' ? quantity * unit.factor : quantity * food.defaultPortionG * unit.factor;
-  const ratio = grams / food.defaultPortionG;
+  const defaultGrams = getFoodDefaultGrams(food);
+  const grams = unit.type === 'weight' ? quantity * unit.grams : quantity * defaultGrams * (unit.ratio || 1);
+  const kcal = calculateQuickKcal(food, quantity, quantityType);
   return {
     foodName: food.name,
     grams: Number(grams.toFixed(1)),
-    kcal: Number((food.kcalPerPortion * ratio).toFixed(1)),
-    protein: Number((food.protein * ratio).toFixed(1)),
-    carbs: Number((food.carbs * ratio).toFixed(1)),
-    fat: Number((food.fat * ratio).toFixed(1))
+    kcal,
+    protein: 0,
+    carbs: 0,
+    fat: 0
   };
 }
 
@@ -232,8 +256,37 @@ function renderProjection() {
   document.getElementById('projectionText').textContent = `${text} ℹ️ Basé sur 7700 kcal/kg • Consulte un pro en cas de doute.`;
 }
 
+function getSearchScore(food, query) {
+  if (!query) return 1;
+  const q = normalizeText(query);
+  const name = normalizeText(food.name);
+  const category = normalizeText(food.category || '');
+  const aliases = (food.aliases || []).map(normalizeText).join(' ');
+  if (name.startsWith(q)) return 100;
+  if (aliases.includes(q)) return 85;
+  if (name.includes(q)) return 70;
+  if (category.includes(q)) return 55;
+  if (`${name} ${aliases} ${category}`.includes(q)) return 40;
+  return 0;
+}
+
+function findFoodByInput(value) {
+  const q = normalizeText(value);
+  return FOOD_DATABASE.find((food) => normalizeText(food.name) === q);
+}
+
+function updateLiveKcal() {
+  const selected = findFoodByInput(document.getElementById('foodSearch').value);
+  const quantity = Number(document.getElementById('quantity').value || 1);
+  const quantityType = document.getElementById('quantityType').value;
+  const kcal = selected ? calculateQuickKcal(selected, quantity, quantityType) : 0;
+  document.getElementById('liveKcal').textContent = `≈ ${format(kcal)} kcal`;
+}
+
 function renderSearchResults() {
-  const query = normalizeText(document.getElementById('foodSearch').value);
+  const queryRaw = document.getElementById('foodSearch').value;
+  const query = normalizeText(queryRaw);
+  const categoryFilter = document.getElementById('foodCategory').value;
   const ul = document.getElementById('searchResults');
   const suggestions = document.getElementById('foodSuggestions');
   ul.innerHTML = '';
@@ -241,9 +294,13 @@ function renderSearchResults() {
 
   const quantity = Number(document.getElementById('quantity').value || 1);
   const quantityType = document.getElementById('quantityType').value;
+
   const matches = FOOD_DATABASE
-    .filter((food) => normalizeText(food.name).includes(query))
-    .slice(0, query ? 12 : 8);
+    .map((food) => ({ food, score: getSearchScore(food, query) }))
+    .filter(({ food, score }) => score > 0 && (!categoryFilter || food.category === categoryFilter))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, query ? 14 : 10)
+    .map(({ food }) => food);
 
   matches.forEach((food) => {
     const opt = document.createElement('option');
@@ -252,19 +309,26 @@ function renderSearchResults() {
 
     if (!query) return;
     const li = document.createElement('li');
-    li.innerHTML = `<span>${food.name} · ${food.kcalPerPortion} kcal</span>`;
+    li.innerHTML = `<span>${food.name} · ${food.kcal} kcal (${food.portionDescription})</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn-outline';
     btn.textContent = 'Ajouter';
     btn.addEventListener('click', () => addFood(food, quantity, quantityType));
     const favBtn = document.createElement('button');
     favBtn.className = 'btn-outline';
-    favBtn.textContent = '☆ Favori';
+    favBtn.textContent = '☆';
+    favBtn.title = 'Ajouter aux favoris';
     favBtn.addEventListener('click', () => addFavorite(food));
     li.appendChild(btn);
     li.appendChild(favBtn);
     ul.appendChild(li);
   });
+
+  if (query && !matches.length) {
+    ul.innerHTML = '<li><span class="muted">Aliment introuvable.</span></li>';
+  }
+
+  updateLiveKcal();
 }
 
 function addFood(food, quantity, quantityType, date = document.getElementById('entryDate').value, mealType = document.getElementById('mealType').value) {
@@ -273,6 +337,30 @@ function addFood(food, quantity, quantityType, date = document.getElementById('e
   user.recents = [food.name, ...user.recents.filter((n) => n !== food.name)].slice(0, 10);
   save();
   renderAll();
+}
+
+
+function addCustomFood() {
+  const name = prompt("Nom de l'aliment personnalisé :");
+  if (!name) return;
+  const kcalPer100g = Number(prompt('kcal / 100g :', '200'));
+  if (!kcalPer100g || kcalPer100g < 0) return alert('Valeur kcal/100g invalide.');
+  const defaultPortion = Number(prompt('Portion par défaut (g/ml ou unité) :', '100')) || 100;
+  const unit = prompt('Unité par défaut (g, ml, portion, tranche, pièce, cs, cc...) :', 'g') || 'g';
+  const kcal = Number(((defaultPortion / 100) * kcalPer100g).toFixed(0));
+  const newFood = {
+    name: name.trim(),
+    defaultPortion,
+    unit,
+    kcal,
+    kcalPer100g,
+    portionDescription: `${defaultPortion}${unit} (personnalisé)`,
+    category: 'Personnalisé',
+    aliases: ['perso']
+  };
+  FOOD_DATABASE.unshift(newFood);
+  document.getElementById('foodSearch').value = newFood.name;
+  renderSearchResults();
 }
 
 function renderFavorites() {
@@ -313,7 +401,7 @@ function addFavorite(food) {
   const user = activeProfile();
   if (user.favorites.some((fav) => normalizeText(fav.name) === normalizeText(food.name))) return;
   if (user.favorites.length >= FAVORITES_MAX) return alert(`Maximum ${FAVORITES_MAX} favoris.`);
-  user.favorites.push({ name: food.name, kcal: food.kcalPerPortion, portionDefault: food.defaultPortionG, unit: 'portion(s)' });
+  user.favorites.push({ name: food.name, kcal: food.kcal, portionDefault: food.defaultPortion, unit: food.unit || 'portion(s)' });
   save();
   renderFavorites();
 }
@@ -823,6 +911,8 @@ function init() {
   document.getElementById('foodSearch').addEventListener('input', renderSearchResults);
   document.getElementById('quantity').addEventListener('input', renderSearchResults);
   document.getElementById('quantityType').addEventListener('change', renderSearchResults);
+  document.getElementById('foodCategory').addEventListener('change', renderSearchResults);
+  document.getElementById('addCustomFoodBtn').addEventListener('click', addCustomFood);
 
   document.getElementById('prevMonth').addEventListener('click', () => {
     state.calendarDate.setMonth(state.calendarDate.getMonth() - 1);

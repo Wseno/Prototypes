@@ -80,23 +80,50 @@
             </div>
             <div class="grid add-grid">
               <label>Aliment
-                <input id="foodSearch" list="foodSuggestions" type="search" placeholder="Rechercher un aliment…" aria-label="Rechercher aliment" />
+                <input id="foodSearch" list="foodSuggestions" type="search" placeholder="Rechercher un aliment, sauce, tranche…" aria-label="Rechercher aliment" />
               </label>
               <datalist id="foodSuggestions"></datalist>
+              <label>Catégorie
+                <select id="foodCategory">
+                  <option value="">Toutes</option>
+                  <option value="Protéines">Viandes / Protéines</option>
+                  <option value="Charcuterie">Charcuterie</option>
+                  <option value="Poissons">Poissons</option>
+                  <option value="Laitiers">Laitiers</option>
+                  <option value="Féculents">Féculents</option>
+                  <option value="Légumineuses">Légumineuses</option>
+                  <option value="Légumes">Légumes</option>
+                  <option value="Fruits">Fruits</option>
+                  <option value="Sauces">Sauces</option>
+                  <option value="Boissons">Boissons</option>
+                  <option value="Plats préparés">Plats préparés</option>
+                  <option value="Sucré">Sucré / Snacks</option>
+                </select>
+              </label>
               <label>Qté
                 <input id="quantity" type="number" value="1" step="0.1" min="0.1" />
+                <small id="liveKcal" class="muted">≈ 0 kcal</small>
               </label>
               <label>Unité
                 <select id="quantityType">
-                  <option value="portion">portion(s)</option>
-                  <option value="grams">g</option>
+                  <option value="grams">g (grammes)</option>
                   <option value="ml">ml</option>
+                  <option value="portion">portion(s)</option>
                   <option value="slice">tranche(s)</option>
+                  <option value="thinSlice">tranche(s) fine(s)</option>
+                  <option value="thickSlice">tranche(s) épaisse(s)</option>
+                  <option value="tbsp">cs (cuillère à soupe)</option>
+                  <option value="tsp">cc (cuillère à café)</option>
                   <option value="piece">pièce(s)</option>
+                  <option value="pot125">pot 125g</option>
+                  <option value="pot150">pot 150g</option>
+                  <option value="half">1/2</option>
+                  <option value="quarter">1/4</option>
                 </select>
               </label>
             </div>
             <div id="favoriteFoods" class="favorites"></div>
+            <button id="addCustomFoodBtn" class="btn-outline" type="button">+ Ajouter aliment personnalisé</button>
             <ul id="searchResults" class="search-results"></ul>
           </section>
 
