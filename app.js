@@ -16,6 +16,18 @@ function createDefaultUserData() {
   };
 }
 
+const GOAL_DELTA_RECOMMENDATIONS = {
+  maintain: { options: [0], hint: 'Maintien: pas de delta, on vise la stabilité.' },
+  loss: {
+    options: [300, 500, 700],
+    hint: 'Perte de poids: déficit conseillé entre 300 et 700 kcal/jour pour rester progressif.'
+  },
+  gain: {
+    options: [200, 300, 400],
+    hint: 'Prise de masse: surplus conseillé entre 200 et 400 kcal/jour pour limiter la prise de gras.'
+  }
+};
+
 const state = {
   profiles: {
     default: { id: 'default', name: 'Profil principal', ...createDefaultUserData() }
@@ -122,6 +134,41 @@ function totalsForDay(date) {
 function format(num) {
   return Number(num).toFixed(0);
 }
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/œ/g, 'oe')
+    .replace(/æ/g, 'ae')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function updateGoalDeltaOptions() {
+  const user = activeProfile();
+  const goalType = user.goal.type;
+  const config = GOAL_DELTA_RECOMMENDATIONS[goalType] || GOAL_DELTA_RECOMMENDATIONS.maintain;
+  const select = document.getElementById('goalDelta');
+  const hint = document.getElementById('goalDeltaHint');
+
+  select.innerHTML = '';
+  config.options.forEach((value) => {
+    const option = document.createElement('option');
+    option.value = String(value);
+    option.textContent = String(value);
+    select.appendChild(option);
+  });
+
+  if (!config.options.includes(user.goal.delta)) {
+    user.goal.delta = config.options[0];
+  }
+
+  select.value = String(user.goal.delta);
+  hint.textContent = config.hint;
+}
+
 
 function renderProjection() {
   const user = activeProfile();
@@ -151,13 +198,13 @@ function renderProjection() {
 }
 
 function renderSearchResults() {
-  const query = document.getElementById('foodSearch').value.trim().toLowerCase();
+  const query = normalizeText(document.getElementById('foodSearch').value);
   const ul = document.getElementById('searchResults');
   ul.innerHTML = '';
   if (!query) return;
 
   const matches = FOOD_DATABASE
-    .filter((food) => food.name.toLowerCase().includes(query))
+    .filter((food) => normalizeText(food.name).includes(query))
     .slice(0, 12);
 
   const quantity = Number(document.getElementById('quantity').value || 1);
@@ -405,9 +452,10 @@ function bindProfile() {
   });
 
   document.getElementById('goalType').value = user.goal.type;
-  document.getElementById('goalDelta').value = user.goal.delta;
+  updateGoalDeltaOptions();
   document.getElementById('goalType').onchange = (e) => {
     user.goal.type = e.target.value;
+    updateGoalDeltaOptions();
     save();
     renderAll();
   };
