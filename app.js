@@ -36,15 +36,15 @@ const state = {
 const FAVORITES_MAX = 10;
 const DEFAULT_FAVORITE_NAMES = ['Œuf entier', 'Thon naturel', 'Jambon blanc', 'Steak haché 5%', 'Yaourt nature'];
 const QUICK_UNITS = [
-  { key: 'grams', label: 'g', type: 'weight', grams: 1 },
-  { key: 'ml', label: 'ml', type: 'weight', grams: 1 },
-  { key: 'portion', label: 'portion(s)', type: 'portion', ratio: 1 },
-  { key: 'slice', label: 'tranche(s)', type: 'portion', ratio: 1 },
-  { key: 'thinSlice', label: 'tranche(s) fine(s)', type: 'portion', ratio: 0.5 },
-  { key: 'thickSlice', label: 'tranche(s) épaisse(s)', type: 'portion', ratio: 1.5 },
-  { key: 'tbsp', label: 'cs', type: 'portion', ratio: 1 },
-  { key: 'tsp', label: 'cc', type: 'portion', ratio: 0.33 },
-  { key: 'piece', label: 'pièce(s)', type: 'portion', ratio: 1 },
+  { key: 'grams', label: 'g', type: 'weight', grams: 1, family: 'weight' },
+  { key: 'ml', label: 'ml', type: 'weight', grams: 1, family: 'weight' },
+  { key: 'portion', label: 'portion(s)', type: 'portion', ratio: 1, family: 'serving' },
+  { key: 'slice', label: 'tranche(s)', type: 'portion', ratio: 1, family: 'slice' },
+  { key: 'thinSlice', label: 'tranche(s) fine(s)', type: 'portion', ratio: 0.5, family: 'slice' },
+  { key: 'thickSlice', label: 'tranche(s) épaisse(s)', type: 'portion', ratio: 1.5, family: 'slice' },
+  { key: 'tbsp', label: 'cs', type: 'portion', ratio: 1, family: 'spoon' },
+  { key: 'tsp', label: 'cc', type: 'portion', ratio: 0.33, family: 'spoon' },
+  { key: 'piece', label: 'pièce(s)', type: 'portion', ratio: 1, family: 'piece' },
   { key: 'pot125', label: 'pot 125g', type: 'weight', grams: 125 },
   { key: 'pot150', label: 'pot 150g', type: 'weight', grams: 150 },
   { key: 'half', label: '1/2', type: 'portion', ratio: 0.5 },
@@ -145,20 +145,49 @@ function getFoodDefaultGrams(food) {
   return food.kcalPer100g && food.kcal ? Number(((food.kcal / food.kcalPer100g) * 100).toFixed(1)) : Number(food.defaultPortion || 100);
 }
 
+function inferFoodUnitKey(food) {
+  const unit = normalizeText(food.unit);
+  if (unit === 'g' || unit === 'gramme' || unit === 'grammes') return 'grams';
+  if (unit === 'ml' || unit === 'millilitre' || unit === 'millilitres') return 'ml';
+  if (unit.includes('tranche fine')) return 'thinSlice';
+  if (unit.includes('tranche epaisse')) return 'thickSlice';
+  if (unit.includes('tranche')) return 'slice';
+  if (unit === 'cs' || unit.includes('cas')) return 'tbsp';
+  if (unit === 'cc' || unit.includes('cac')) return 'tsp';
+  if (unit.includes('piece') || unit.includes('oeuf') || unit.includes('part') || unit.includes('pot') || unit.includes('boule') || unit.includes('tasse')) return 'piece';
+  if (unit.includes('portion')) return 'portion';
+  return null;
+}
+
+function quantityToGrams(food, quantity, quantityType) {
+  const unit = getUnitConfig(quantityType);
+  const defaultGrams = getFoodDefaultGrams(food);
+  if (unit.type === 'weight') return quantity * unit.grams;
+
+  const defaultPortion = Number(food.defaultPortion || 1) || 1;
+  const foodUnitKey = inferFoodUnitKey(food);
+  const foodUnit = foodUnitKey ? getUnitConfig(foodUnitKey) : null;
+  if (foodUnit && foodUnit.family === unit.family && foodUnit.type === 'portion') {
+    const gramsPerFoodUnit = defaultGrams / defaultPortion;
+    return quantity * gramsPerFoodUnit * ((unit.ratio || 1) / (foodUnit.ratio || 1));
+  }
+
+  if (quantityType === 'portion') return quantity * defaultGrams;
+  return quantity * defaultGrams * (unit.ratio || 1);
+}
+
 function calculateQuickKcal(food, quantity, quantityType) {
   if (!food) return 0;
-  const unit = getUnitConfig(quantityType);
-  if (unit.type === 'weight' && food.kcalPer100g != null) {
-    const grams = quantity * unit.grams;
+  const grams = quantityToGrams(food, quantity, quantityType);
+  if (food.kcalPer100g != null) {
     return Number(((grams / 100) * food.kcalPer100g).toFixed(1));
   }
-  return Number((quantity * food.kcal * (unit.ratio || 1)).toFixed(1));
+  const defaultGrams = getFoodDefaultGrams(food);
+  return Number((((grams / defaultGrams) * food.kcal) || 0).toFixed(1));
 }
 
 function calcEntry(food, quantity, quantityType) {
-  const unit = getUnitConfig(quantityType);
-  const defaultGrams = getFoodDefaultGrams(food);
-  const grams = unit.type === 'weight' ? quantity * unit.grams : quantity * defaultGrams * (unit.ratio || 1);
+  const grams = quantityToGrams(food, quantity, quantityType);
   const kcal = calculateQuickKcal(food, quantity, quantityType);
   return {
     foodName: food.name,
