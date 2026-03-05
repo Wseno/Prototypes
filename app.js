@@ -145,6 +145,12 @@ function getFoodDefaultGrams(food) {
   return food.kcalPer100g && food.kcal ? Number(((food.kcal / food.kcalPer100g) * 100).toFixed(1)) : Number(food.defaultPortion || 100);
 }
 
+function parsePortionDescriptionGrams(food) {
+  const text = String(food.portionDescription || '').toLowerCase();
+  const match = text.match(/~\s*(\d+(?:[.,]\d+)?)\s*g/);
+  return match ? Number(match[1].replace(',', '.')) : null;
+}
+
 function inferFoodUnitKey(food) {
   const unit = normalizeText(food.unit);
   if (unit === 'g' || unit === 'gramme' || unit === 'grammes') return 'grams';
@@ -159,6 +165,37 @@ function inferFoodUnitKey(food) {
   return null;
 }
 
+function getReferenceWeightForUnit(unitKey) {
+  if (unitKey === 'thinSlice') return 18;
+  if (unitKey === 'slice') return 30;
+  if (unitKey === 'thickSlice') return 42;
+  if (unitKey === 'tbsp') return 15;
+  if (unitKey === 'tsp') return 5;
+  if (unitKey === 'piece') return 80;
+  if (unitKey === 'portion') return 100;
+  return null;
+}
+
+function getGramsForFoodUnit(food, foodUnitKey, defaultGrams) {
+  const defaultPortion = Number(food.defaultPortion || 1) || 1;
+  const descriptionGrams = parsePortionDescriptionGrams(food);
+  const gramsPerFoodUnit = descriptionGrams ? descriptionGrams / defaultPortion : defaultGrams / defaultPortion;
+  const reference = getReferenceWeightForUnit(foodUnitKey);
+  if (!reference) return gramsPerFoodUnit;
+  return Math.min(Math.max(gramsPerFoodUnit, reference * 0.7), reference * 1.35);
+}
+
+function resolveFoodFromInput(value) {
+  const exactMatch = findFoodByInput(value);
+  if (exactMatch) return exactMatch;
+  const query = normalizeText(value);
+  if (!query) return null;
+  return FOOD_DATABASE
+    .map((food) => ({ food, score: getSearchScore(food, query) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.food || null;
+}
+
 function quantityToGrams(food, quantity, quantityType) {
   const unit = getUnitConfig(quantityType);
   const defaultGrams = getFoodDefaultGrams(food);
@@ -168,7 +205,7 @@ function quantityToGrams(food, quantity, quantityType) {
   const foodUnitKey = inferFoodUnitKey(food);
   const foodUnit = foodUnitKey ? getUnitConfig(foodUnitKey) : null;
   if (foodUnit && foodUnit.family === unit.family && foodUnit.type === 'portion') {
-    const gramsPerFoodUnit = defaultGrams / defaultPortion;
+    const gramsPerFoodUnit = getGramsForFoodUnit(food, foodUnitKey, defaultGrams);
     return quantity * gramsPerFoodUnit * ((unit.ratio || 1) / (foodUnit.ratio || 1));
   }
 
@@ -305,7 +342,7 @@ function findFoodByInput(value) {
 }
 
 function updateLiveKcal() {
-  const selected = findFoodByInput(document.getElementById('foodSearch').value);
+  const selected = resolveFoodFromInput(document.getElementById('foodSearch').value);
   const quantity = Number(document.getElementById('quantity').value || 1);
   const quantityType = document.getElementById('quantityType').value;
   const kcal = selected ? calculateQuickKcal(selected, quantity, quantityType) : 0;
