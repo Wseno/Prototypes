@@ -36,9 +36,9 @@ const state = {
 const FAVORITES_MAX = 10;
 const DEFAULT_FAVORITE_NAMES = ['Œuf entier', 'Thon naturel', 'Jambon blanc', 'Steak haché 5%', 'Yaourt nature'];
 const QUICK_UNITS = [
+  { key: 'portion', label: 'portion(s)', type: 'portion', ratio: 1, family: 'serving' },
   { key: 'grams', label: 'g', type: 'weight', grams: 1, family: 'weight' },
   { key: 'ml', label: 'ml', type: 'weight', grams: 1, family: 'weight' },
-  { key: 'portion', label: 'portion(s)', type: 'portion', ratio: 1, family: 'serving' },
   { key: 'slice', label: 'tranche(s)', type: 'portion', ratio: 1, family: 'slice' },
   { key: 'thinSlice', label: 'tranche(s) fine(s)', type: 'portion', ratio: 0.5, family: 'slice' },
   { key: 'thickSlice', label: 'tranche(s) épaisse(s)', type: 'portion', ratio: 1.5, family: 'slice' },
@@ -411,8 +411,14 @@ function addCustomFood() {
   if (!name) return;
   const kcalPer100g = Number(prompt('kcal / 100g :', '200'));
   if (!kcalPer100g || kcalPer100g < 0) return alert('Valeur kcal/100g invalide.');
-  const defaultPortion = Number(prompt('Portion par défaut (g/ml ou unité) :', '100')) || 100;
-  const unit = prompt('Unité par défaut (g, ml, portion, tranche, pièce, cs, cc...) :', 'g') || 'g';
+  const unit = (prompt('Unité par défaut (portion, g, ml, tranche, pièce, cs, cc...) :', 'portion') || 'portion').trim();
+  const normalizedUnit = normalizeText(unit);
+  const weightPrompt = normalizedUnit === 'g' || normalizedUnit === 'gramme' || normalizedUnit === 'grammes'
+    ? 'Combien de grammes pour 1 unité ?'
+    : normalizedUnit === 'ml' || normalizedUnit === 'millilitre' || normalizedUnit === 'millilitres'
+      ? 'Combien de ml pour 1 unité ?'
+      : `Combien de g/ml représente 1 ${unit} ?`;
+  const defaultPortion = Number(prompt(weightPrompt, '100')) || 100;
   const kcal = Number(((defaultPortion / 100) * kcalPer100g).toFixed(0));
   const newFood = {
     name: name.trim(),
