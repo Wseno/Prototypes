@@ -34,7 +34,7 @@ const FOOD_DATABASE = [
   { name: 'Yaourt grec', defaultPortion: 1, unit: 'pot', kcal: 155, kcalPer100g: 124, portionDescription: '1 pot 125g', category: 'Laitiers' },
   { name: 'Skyr', defaultPortion: 1, unit: 'pot', kcal: 90, kcalPer100g: 60, portionDescription: '1 pot 150g', category: 'Laitiers' },
   { name: 'Fromage blanc 0%', defaultPortion: 100, unit: 'g', kcal: 46, kcalPer100g: 46, portionDescription: '100g', category: 'Laitiers' },
-  { name: 'Petit suisse', defaultPortion: 2, unit: 'pièce', kcal: 92, kcalPer100g: 92, portionDescription: '2 x 60g', category: 'Laitiers' },
+  { name: 'Petit suisse', defaultPortion: 2, unit: 'pièce', kcal: 110, kcalPer100g: 92, portionDescription: '2 x 60g', category: 'Laitiers' },
   { name: 'Lait demi-écrémé', defaultPortion: 200, unit: 'ml', kcal: 94, kcalPer100g: 47, portionDescription: '1 verre 200ml', category: 'Boissons' },
   { name: 'Lait entier', defaultPortion: 200, unit: 'ml', kcal: 128, kcalPer100g: 64, portionDescription: '1 verre 200ml', category: 'Boissons' },
   { name: 'Boisson amande sans sucre', defaultPortion: 200, unit: 'ml', kcal: 26, kcalPer100g: 13, portionDescription: '1 verre 200ml', category: 'Boissons' },
